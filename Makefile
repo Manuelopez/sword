@@ -12,7 +12,7 @@ platformpth = $(subst /,$(PATHSEP),$1)
 # Set global macros
 buildDir := bin
 executable := app
-target := $(buildDir)/$(executable)
+target := ./$(buildDir)/$(executable)
 sources := $(call rwildcard,src/,*.cpp)
 objects := $(patsubst src/%, $(buildDir)/%, $(patsubst %.cpp, %.o, $(sources)))
 depends := $(patsubst %.o, %.d, $(objects))
@@ -55,17 +55,19 @@ else
 endif
 
 # Lists phony targets for Makefile
-.PHONY: all setup submodules execute clean
+.PHONY: all setup submodules execute
 
 # Default target, compiles, executes and cleans
-all: $(target) execute clean
+all: $(target) execute
 
 # Sets up the project for compiling, generates includes and libs
 setup: include lib
+	cp -R ./resources ./bin/
 
 # Pull and update the the build submodules
 submodules:
 	git submodule update --init --recursive --depth 1
+
 
 # Copy the relevant header files into includes
 include: submodules
@@ -96,6 +98,8 @@ $(buildDir)/%.o: src/%.cpp Makefile
 execute:
 	$(target) $(ARGS)
 
-# Clean up all relevant files
+
 clean:
 	$(RM) $(call platformpth, $(buildDir)/*)
+
+

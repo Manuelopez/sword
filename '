@@ -1,0 +1,149 @@
+#include "./helper.cpp"
+#include "raylib.h"
+#include "raymath.h"
+#include <cassert>
+#include <cstring>
+#include <iostream>
+#include <vector>
+
+#define MAX_ENTITY_COUNT 1024
+
+enum class EntityArcheType {
+  player = 0,
+  goblin = 1,
+  troll = 2,
+  MAX = 3,
+};
+
+struct Entity {
+  bool is_valid;
+  EntityArcheType type;
+  Vector2 position;
+  Vector2 draw_position;
+  void update_draw_posiiton() {
+    this->draw_position = this->position;
+
+    // TODO remove the
+  }
+};
+
+struct World {
+  Entity entities[MAX_ENTITY_COUNT];
+};
+
+World *world = 0;
+
+Entity *create_entity() {
+  assert(world && "wolrd is null");
+
+  Entity *entity_found = 0;
+  for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
+    Entity *existing_entity = &world->entities[i];
+    if (!existing_entity->is_valid) {
+      entity_found = existing_entity;
+    }
+  }
+  assert(entity_found && "no more enities memory full");
+  return entity_found;
+}
+
+void entity_destroy(Entity *entity) { std::memset(entity, 0, sizeof(Entity)); }
+
+
+void setup_goblin(Entity* entity){
+  entity->type = EntityArcheType::goblin;
+}
+
+void setup_troll(Entity* entity){
+  entity->type = EntityArcheType::troll;
+}
+
+
+
+int main(void) {
+  // Initialization
+  //--------------------------------------------------------------------------------------
+  const int screenWidth = 800;
+  const int screenHeight = 450;
+  SearchAndSetResourceDir("resources");
+
+  InitWindow(screenWidth, screenHeight, "raylib [core] example - basic window");
+
+  Entity *player_en = create_entity();
+  player_en->position = {0, 0};
+  Texture2D character = LoadTexture("character-001-idle.png");
+  Camera2D camera{};
+  camera.offset = {screenWidth / 2.0f, screenHeight / 2.0f};
+  camera.zoom = 1.0;
+  camera.target = player_en->position;
+  // textures
+
+  SetTargetFPS(60); // Set our game to run at 60 frames-per-second
+  //--------------------------------------------------------------------------------------
+
+  // Main game loop
+  while (!WindowShouldClose()) // Detect window close button or ESC key
+  {
+    float delta_t = GetFrameTime();
+
+    // :capture :inptus
+    // :cpature :input :player
+    Vector2 inputs_axis{0, 0};
+    {
+      if (IsKeyDown(KEY_W)) {
+        inputs_axis.y -= 1;
+      }
+      if (IsKeyDown(KEY_D)) {
+        inputs_axis.x += 1;
+      }
+      if (IsKeyDown(KEY_S)) {
+        inputs_axis.y += 1;
+      }
+      if (IsKeyDown(KEY_A)) {
+        inputs_axis.x -= 1;
+      }
+      inputs_axis = Vector2Normalize(inputs_axis);
+    }
+
+    //----------------------------------------------------------------------------------
+    // TODO: Update your variables here
+    //----------------------------------------------------------------------------------
+
+    // :update
+    // :update :player :position
+    {
+
+      player_en->position = Vector2Add(
+          player_en->position, Vector2Scale(inputs_axis, 100.0 * delta_t));
+      player_en->update_draw_posiiton();
+    }
+
+    Vector2 mouse_position_world = GetMousePosition();
+    Vector2 mouse_position_camera =
+        GetWorldToScreen2D(mouse_position_world, camera);
+
+    // Draw
+    //----------------------------------------------------------------------------------
+    BeginDrawing();
+    ClearBackground(RAYWHITE);
+    BeginMode2D(camera);
+    {
+
+      DrawTextureV(character, player_en->draw_position, WHITE);
+      std::cout << " x: " << mouse_position_world.x
+                << " y: " << mouse_position_world.y << std::endl;
+    }
+    EndMode2D();
+
+    EndDrawing();
+    //----------------------------------------------------------------------------------
+  }
+  UnloadTexture(character);
+
+  // De-Initialization
+  //--------------------------------------------------------------------------------------
+  CloseWindow(); // Close window and OpenGL context
+  //--------------------------------------------------------------------------------------
+
+  return 0;
+}

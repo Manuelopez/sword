@@ -1,0 +1,17 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/c++",
+      "-c",
+      "-std=c++17",
+      "-I",
+      "include",
+      "-o",
+      "bin/main.o",
+      "src/main.cpp"
+    ],
+    "directory": "/Users/manuelopez/Desktop/sword/sword",
+    "file": "/Users/manuelopez/Desktop/sword/sword/src/main.cpp",
+    "output": "/Users/manuelopez/Desktop/sword/sword/bin/main.o"
+  }
+]
