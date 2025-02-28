@@ -147,10 +147,19 @@ struct Entity {
   EntityArcheType type;
   TextureId textureId;
   Vector2 position;
+
   Vector2 *before_attack_position;
   Vector2 *end_movement_position;
+  Vector2 *end_attack_position;
+  float movement_speed;
+  float attack_speed;
+  float attack_range;
+  float attack_omega; // for rotating whiles attacking
+
   Vector2 input_axis;
+  Vector2 attack_input_axis;
   float angle;
+  float angle_before_attack;
   int health;
   int damage;
 
@@ -159,6 +168,18 @@ struct Entity {
 
   bool is_attacking() { return this->attack != AttackArcheType::NIL; }
   bool is_blocking() { return this->attack != AttackArcheType::NIL; }
+  void rectangle() {
+    Texture2D *texture = this->get_texture();
+    Range2f bounds = range2f_make_bottom_center(
+        Vector2{(float)(texture->width), (float)texture->height});
+    bounds = range2f_shift(bounds, this->position);
+    Color color = RED;
+    color.a = 100;
+
+    Vector2 size = range2f_size(bounds);
+    DrawRectanglePro({bounds.min.x, bounds.min.y, size.x, size.y},
+                     {size.x / 2, size.y / 2}, 0, color);
+  }
 
   Texture2D *get_texture() {
     if ((int)this->textureId < 0 || this->textureId >= TextureId::MAX) {
@@ -196,6 +217,9 @@ void entity_destroy(Entity *entity) { std::memset(entity, 0, sizeof(Entity)); }
 void setup_player(Entity *entity) {
   entity->type = EntityArcheType::GOBLIN;
   entity->textureId = TextureId::PLAYER;
+  entity->attack_speed = 200;
+  entity->movement_speed = 100;
+  entity->attack_range = 50;
 }
 void setup_goblin(Entity *entity) {
   entity->type = EntityArcheType::GOBLIN;
@@ -257,14 +281,37 @@ int main(void) {
 
     // :reset values
     float delta_time = GetFrameTime();
-    if (player_en->end_movement_position != nullptr) {
+    for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
+      Entity *entity = &world->entities[i];
+      if (entity->is_valid) {
 
-      if (almost_equals(player_en->position.x,
-                        player_en->end_movement_position->x, 5) &&
-          almost_equals(player_en->position.y,
-                        player_en->end_movement_position->y, 5)) {
-        player_en->input_axis = {0, 0};
-        player_en->end_movement_position = nullptr;
+        if (!entity->is_attacking()) {
+          if (entity->end_movement_position != nullptr) {
+
+            if (almost_equals(entity->position.x,
+                              entity->end_movement_position->x, 5) &&
+                almost_equals(entity->position.y,
+                              entity->end_movement_position->y, 5)) {
+              entity->input_axis = {0, 0};
+              entity->end_movement_position = nullptr;
+            }
+          }
+        } else {
+
+          if (entity->end_attack_position != nullptr) {
+            if (almost_equals(entity->position.x,
+                              entity->end_attack_position->x, 5) &&
+                almost_equals(entity->position.y,
+                              entity->end_attack_position->y, 5)) {
+              entity->attack_input_axis = {0, 0};
+              entity->end_attack_position = nullptr;
+              entity->position = *entity->before_attack_position;
+              entity->before_attack_position = nullptr;
+              entity->attack = AttackArcheType::NIL;
+              entity->angle = entity->angle_before_attack;
+            }
+          }
+        }
       }
     }
 
@@ -279,7 +326,8 @@ int main(void) {
     // :cpature :input :player
     {
 
-      if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+      if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) &&
+          !player_en->is_attacking()) {
         Vector2 mouse_pos = {mouse_position_world.x, mouse_position_world.y};
         player_en->end_movement_position = &mouse_pos;
 
@@ -297,13 +345,14 @@ int main(void) {
         // std::cout << "this is the angle " << player_en->angle;
       }
 
-      // :input :keyboard
+      // :input :keyboard :attack
 
       {
 
         if (IsKeyPressed(KEY_Q)) {
 
           Vector2 player_current_position = player_en->position;
+          player_en->angle_before_attack = player_en->angle;
 
           player_en->angle =
               (atan2((mouse_position_world.y - player_current_position.y),
@@ -318,21 +367,28 @@ int main(void) {
           // rotate 90 clockwise
           move_to = {-move_to.y, move_to.x};
           move_to = Vector2Normalize(move_to);
-          Vector2 mid_position =
-              Vector2MoveTowards(player_en->position, mouse_position_world, 10);
           Vector2 begin_position = Vector2Rotate(player_en->position, 90);
-          Vector2 end_position = Vector2Rotate(player_en->position, 90);
+          Vector2 end_position =
+              Vector2Add(player_en->position,
+                         Vector2Scale(move_to, -player_en->attack_range));
 
-          player_en->position = Vector2Add(
-              player_en->position, Vector2Scale(move_to, 100.0 * delta_time));
+          player_en->position =
+              Vector2Add(player_en->position,
+                         Vector2Scale(move_to, player_en->attack_range));
+          Vector2 input_axis = Vector2Normalize(
+              Vector2Subtract(end_position, player_en->position));
+
+          player_en->attack_input_axis = input_axis;
+          player_en->end_attack_position = &end_position;
+          float distance = Vector2Distance(player_en->position, end_position);
+          float time = distance / (player_en->attack_speed * delta_time);
+          float omega = -180 / time;
+          player_en->attack_omega = omega;
 
           /**/
           /* Vector2 begin_position = Vector2MoveTowards( */
           /*     player_en->position, */
           /*     {-mouse_position_world.y, mouse_position_world.x}, 40); */
-          /* Vector2 end_position = Vector2MoveTowards( */
-          /*     player_en->position, */
-          /*     {mouse_position_world.y, -mouse_position_world.x}, 40); */
           /* player_en->position = begin_position; */
           /* player_en->end_movement_position = &end_position; */
           /* player_en->input_axis = Vector2Normalize( */
@@ -358,13 +414,23 @@ int main(void) {
       // :update :position
 
       // update draw positions
+
       for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
         Entity *entity = &world->entities[i];
         if (entity->is_valid) {
 
-          entity->position =
-              Vector2Add(entity->position,
-                         Vector2Scale(entity->input_axis, 100.0 * delta_time));
+          if (!entity->is_attacking()) {
+            entity->position =
+                Vector2Add(entity->position,
+                           Vector2Scale(entity->input_axis,
+                                        entity->movement_speed * delta_time));
+          } else {
+            entity->position =
+                Vector2Add(entity->position,
+                           Vector2Scale(entity->attack_input_axis,
+                                        entity->attack_speed * delta_time));
+            entity->angle += entity->attack_omega;
+          }
         }
       }
     }
@@ -418,6 +484,7 @@ int main(void) {
         DrawRectangleV(mouse_tile_to_world, {TILE_WIDTH, TILE_WIDTH}, RED);
       }
 
+      // :render
       for (int i = 0; i < MAX_ENTITY_COUNT; i++) {
         Entity *entity = &world->entities[i];
         if (entity->is_valid) {
@@ -433,6 +500,7 @@ int main(void) {
           default: {
             DrawTexturePro(*texture, source_rectangle, destination_rectangle,
                            origin, entity->angle, WHITE);
+            entity->rectangle();
 
             break;
           }
@@ -453,17 +521,19 @@ int main(void) {
               Range2f bounds = range2f_make_bottom_center(
                   Vector2{(float)(texture->width), (float)texture->height});
               bounds = range2f_shift(bounds, entity->position);
-              Color color = RED;
+              Color color = WHITE; // TODO
               color.a = 100;
               if (range2f_contains(bounds, mouse_position_world)) {
-                color = RED;
                 color.a = 200;
               }
 
+              // TODO
               /* DrawRectangleV(bounds.min, range2f_size(bounds), color); */
               Vector2 size = range2f_size(bounds);
-              DrawRectanglePro({bounds.min.x, bounds.min.y, size.x, size.y},
-                               {size.x / 2, size.y / 2}, entity->angle, color);
+              /* DrawRectanglePro({bounds.min.x, bounds.min.y, size.x, size.y},
+               */
+              /*                  {size.x / 2, size.y / 2}, entity->angle,
+               * color); */
             }
           }
         }
